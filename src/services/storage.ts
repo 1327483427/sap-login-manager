@@ -1,8 +1,7 @@
 import { SapSystem, VaultSettings } from '../types/sap';
-import { DEFAULT_SAP_SYSTEMS } from '../mock/defaultSystems';
 
-const STORAGE_KEY_SYSTEMS = 'SAP_QUICK_LOGON_SYSTEMS_v1';
-const STORAGE_KEY_SETTINGS = 'SAP_QUICK_LOGON_SETTINGS_v1';
+const STORAGE_KEY_SYSTEMS = 'SAP_QUICK_LOGON_SYSTEMS_v2';
+const STORAGE_KEY_SETTINGS = 'SAP_QUICK_LOGON_SETTINGS_v2';
 
 const DEFAULT_SETTINGS: VaultSettings = {
   isLocked: false,
@@ -16,14 +15,12 @@ export function loadSystemsFromStorage(): SapSystem[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY_SYSTEMS);
     if (!raw) {
-      // 首次加载初始化示例数据
-      saveSystemsToStorage(DEFAULT_SAP_SYSTEMS);
-      return DEFAULT_SAP_SYSTEMS;
+      return [];
     }
     return JSON.parse(raw);
   } catch (e) {
     console.error('加载系统配置失败:', e);
-    return DEFAULT_SAP_SYSTEMS;
+    return [];
   }
 }
 
@@ -32,6 +29,14 @@ export function saveSystemsToStorage(systems: SapSystem[]): void {
     localStorage.setItem(STORAGE_KEY_SYSTEMS, JSON.stringify(systems));
   } catch (e) {
     console.error('保存系统配置失败:', e);
+  }
+}
+
+export function clearStoredSystems(): void {
+  try {
+    localStorage.removeItem(STORAGE_KEY_SYSTEMS);
+  } catch (e) {
+    console.error('清除缓存失败:', e);
   }
 }
 

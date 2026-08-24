@@ -18,8 +18,7 @@ import {
 import { downloadSapShortcut } from './services/sapShortcut';
 import { copyToClipboardWithTimeout } from './services/crypto';
 import { scanLocalSapConfigs } from './services/autoScanner';
-import { DEFAULT_SAP_SYSTEMS } from './mock/defaultSystems';
-import { Server, Plus, Zap, Sparkles, X } from 'lucide-react';
+import { Server, Plus, Zap, Sparkles, X, RefreshCw } from 'lucide-react';
 
 export const App: React.FC = () => {
   const [systems, setSystems] = useState<SapSystem[]>(() => loadSystemsFromStorage());
@@ -27,6 +26,7 @@ export const App: React.FC = () => {
   const [activeCategory, setActiveCategory] = useState('ALL');
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
+  const [isLoadingLocal, setIsLoadingLocal] = useState(false);
 
   // 模态框状态
   const [isConnectionModalOpen, setIsConnectionModalOpen] = useState(false);
@@ -62,22 +62,37 @@ export const App: React.FC = () => {
     saveSystemsToStorage(newSystems);
   };
 
-  // 首次启动时自动扫描本地 SAP 配置是否存在
+  // 首次启动：如果本地没有缓存系统，则自动直接从本机 SAP 配置文件加载
   useEffect(() => {
-    const checkLocalConfig = async () => {
+    const initFromLocalSapConfig = async () => {
+      setIsLoadingLocal(true);
       try {
         const res = await scanLocalSapConfigs();
-        if (res.systems.length > 0 && res.scannedFiles.length > 0) {
+        if (res.systems.length > 0) {
           setAutoDetectedInfo({
             count: res.systems.length,
-            filePath: res.scannedFiles[0].path,
+            filePath: res.scannedFiles[0]?.path || '本地 SAP 配置文件',
           });
+
+          // 如果存储中尚无系统数据，直接自动载入真实本机配置
+          const cached = loadSystemsFromStorage();
+          if (cached.length === 0) {
+            updateSystemsState(res.systems);
+            addToast({
+              type: 'success',
+              title: `🎉 已自动加载本机 SAP 配置 (${res.systems.length} 个系统)`,
+              description: `来源: ${res.scannedFiles[0]?.path}`,
+            });
+          }
         }
-      } catch {
-        // ignore background detection error
+      } catch (e) {
+        console.error('加载本地配置出错:', e);
+      } finally {
+        setIsLoadingLocal(false);
       }
     };
-    checkLocalConfig();
+
+    initFromLocalSapConfig();
   }, []);
 
   // 全局快捷键监听 (Cmd+K / Ctrl+K)
@@ -232,6 +247,7 @@ export const App: React.FC = () => {
 
   // 自动扫描导入覆盖或合并
   const handleAutoScanImport = (importedList: SapSystem[]) => {
+    // 智能合并，保留已有保存的密码
     const existingMap = new Map(systems.map(s => [`${s.sid}_${s.server}_${s.client}`, s]));
     
     for (const item of importedList) {
@@ -251,11 +267,50 @@ export const App: React.FC = () => {
     setShowAutoDetectBanner(false);
   };
 
-  // 恢复默认示例数据
-  const handleResetData = () => {
-    if (window.confirm('是否重置为默认的演示 SAP 系统连接列表？')) {
-      updateSystemsState(DEFAULT_SAP_SYSTEMS);
-      addToast({ type: 'info', title: '已恢复预置示例 SAP 系统数据' });
+  // 重新从本地 SAP 配置文件全量加载
+  const handleReloadFromLocalConfig = async () => {
+    setIsLoadingLocal(true);
+    try {
+      const res = await scanLocalSapConfigs();
+      if (res.systems.length > 0) {
+        // 保留已有密码
+        const existingPwMap = new Map<string, string>();
+        for (const sys of systems) {
+          for (const acc of sys.accounts) {
+            if (acc.password) existingPwMap.set(`${sys.sid}_${acc.username}`, acc.password);
+          }
+        }
+
+        const reloaded = res.systems.map(sys => {
+          const acc = sys.accounts[0];
+          if (acc) {
+            const savedPw = existingPwMap.get(`${sys.sid}_${acc.username}`);
+            if (savedPw) acc.password = savedPw;
+          }
+          return sys;
+        });
+
+        updateSystemsState(reloaded);
+        addToast({
+          type: 'success',
+          title: `✅ 已重新从本机 SAP GUI 配置文件加载 ${reloaded.length} 个系统`,
+          description: `来源: ${res.scannedFiles[0]?.path}`,
+        });
+      } else {
+        addToast({
+          type: 'warning',
+          title: '未能在标准路径下找到 SAP 配置文件',
+          description: '请检查本机是否安装了 SAP GUI 或手动导入配置。',
+        });
+      }
+    } catch (e: any) {
+      addToast({
+        type: 'warning',
+        title: '读取本机配置失败',
+        description: e.message,
+      });
+    } finally {
+      setIsLoadingLocal(false);
     }
   };
 
@@ -268,7 +323,7 @@ export const App: React.FC = () => {
         onSelectCategory={setActiveCategory}
         selectedTag={selectedTag}
         onSelectTag={setSelectedTag}
-        onResetDefaultData={handleResetData}
+        onReloadLocalConfig={handleReloadFromLocalConfig}
         onOpenAutoScan={() => setIsAutoScanModalOpen(true)}
       />
 
@@ -299,7 +354,7 @@ export const App: React.FC = () => {
                   </div>
                   <div className="min-w-0 text-xs">
                     <div className="font-bold text-slate-100 flex items-center gap-2">
-                      <span>已自动发现本地 SAP GUI 配置</span>
+                      <span>已自动读取本机 SAP GUI 配置文件</span>
                       <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
                         {autoDetectedInfo.count} 个系统连接
                       </span>
@@ -316,7 +371,7 @@ export const App: React.FC = () => {
                     className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 active:scale-95 text-white font-semibold rounded-xl text-xs flex items-center gap-1.5 shadow-md shadow-blue-500/20 transition"
                   >
                     <Zap className="w-3.5 h-3.5 fill-current" />
-                    <span>立即读取并生成</span>
+                    <span>查看与管理快捷方式</span>
                   </button>
                   <button
                     onClick={() => setShowAutoDetectBanner(false)}
@@ -363,20 +418,25 @@ export const App: React.FC = () => {
             </div>
 
             {/* 系统列表展示 (网格卡片 / 列表详细) */}
-            {filteredSystems.length === 0 ? (
+            {isLoadingLocal ? (
+              <div className="py-20 text-center glass-panel rounded-2xl border border-slate-800/80 p-8 space-y-3">
+                <RefreshCw className="w-8 h-8 text-blue-400 animate-spin mx-auto" />
+                <h3 className="font-bold text-sm text-slate-200">正在从本地 SAP 配置文件读取连接...</h3>
+              </div>
+            ) : filteredSystems.length === 0 ? (
               <div className="py-20 text-center glass-panel rounded-2xl border border-slate-800/80 p-8 space-y-4">
                 <div className="w-16 h-16 rounded-2xl bg-slate-800/80 border border-slate-700/80 flex items-center justify-center mx-auto text-slate-500">
                   <Server className="w-8 h-8" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-sm text-slate-200">没有匹配的 SAP 系统连接</h3>
+                  <h3 className="font-bold text-sm text-slate-200">未检测到或暂无匹配的 SAP 系统连接</h3>
                   <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
                     您可以点击「自动读取本地配置」从本机的 SAP GUI 自动生成系统，或点击「新建连接」。
                   </p>
                 </div>
                 <div className="flex items-center justify-center gap-3 pt-2">
                   <button
-                    onClick={() => setIsAutoScanModalOpen(true)}
+                    onClick={handleReloadFromLocalConfig}
                     className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-md shadow-blue-500/20"
                   >
                     <Zap className="w-3.5 h-3.5 fill-current" />

@@ -16,7 +16,7 @@ interface SidebarProps {
   onSelectCategory: (cat: string) => void;
   selectedTag: string | null;
   onSelectTag: (tag: string | null) => void;
-  onResetDefaultData: () => void;
+  onReloadLocalConfig: () => void;
   onOpenAutoScan: () => void;
 }
 
@@ -26,7 +26,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onSelectCategory,
   selectedTag,
   onSelectTag,
-  onResetDefaultData,
+  onReloadLocalConfig,
   onOpenAutoScan,
 }) => {
   // 统计各分类数量
@@ -238,17 +238,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <span>凭据保管箱</span>
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
             </div>
-            <p className="text-[10px] text-slate-400 truncate">AES-256 加密保护</p>
+            <p className="text-[10px] text-slate-400 truncate">AES-256 本地加密</p>
           </div>
         </div>
 
         <button
-          onClick={onResetDefaultData}
+          onClick={onReloadLocalConfig}
           className="w-full flex items-center justify-center gap-1.5 py-1.5 text-[11px] text-slate-400 hover:text-slate-200 transition rounded-lg hover:bg-slate-800/50"
-          title="重置为演示示例数据"
+          title="重新从本机 SAP GUI 配置文件加载系统"
         >
           <RotateCcw className="w-3 h-3" />
-          <span>恢复默认示例数据</span>
+          <span>重新加载本机 SAP 配置</span>
         </button>
       </div>
     </aside>
