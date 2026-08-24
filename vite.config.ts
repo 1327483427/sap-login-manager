@@ -4,6 +4,54 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 
+// 智能解码二进制 Buffer，支持 UTF-8, GBK, GB2312, GB18030, UTF-16LE
+function decodeSmartBuffer(buffer: Buffer): string {
+  if (!buffer || buffer.length === 0) return '';
+
+  // 1. BOM 检查
+  if (buffer.length >= 3 && buffer[0] === 0xEF && buffer[1] === 0xBB && buffer[2] === 0xBF) {
+    return buffer.subarray(3).toString('utf-8');
+  }
+  if (buffer.length >= 2 && buffer[0] === 0xFF && buffer[1] === 0xFE) {
+    return new TextDecoder('utf-16le').decode(buffer.subarray(2));
+  }
+  if (buffer.length >= 2 && buffer[0] === 0xFE && buffer[1] === 0xFF) {
+    return new TextDecoder('utf-16be').decode(buffer.subarray(2));
+  }
+
+  // 2. 检查 XML 声明编码
+  const headAscii = buffer.subarray(0, Math.min(200, buffer.length)).toString('binary');
+  const encMatch = headAscii.match(/encoding=["']([^"']+)["']/i);
+  if (encMatch && encMatch[1]) {
+    const declaredEnc = encMatch[1].toLowerCase().trim();
+    if (['gbk', 'gb2312', 'gb18030', 'cp936'].includes(declaredEnc)) {
+      try {
+        return new TextDecoder('gb18030').decode(buffer);
+      } catch {}
+    } else if (['utf-16', 'utf-16le'].includes(declaredEnc)) {
+      try {
+        return new TextDecoder('utf-16le').decode(buffer);
+      } catch {}
+    }
+  }
+
+  // 3. 严格 UTF-8 校验
+  try {
+    const strictUtf8 = new TextDecoder('utf-8', { fatal: true }).decode(buffer);
+    return strictUtf8;
+  } catch {
+    // UTF-8 校验失败，说明是 GBK / ANSI 编码
+  }
+
+  // 4. 尝试 GB18030 (超集兼容 GBK, GB2312)
+  try {
+    return new TextDecoder('gb18030').decode(buffer);
+  } catch {}
+
+  // 5. 默认返回 UTF-8
+  return buffer.toString('utf-8');
+}
+
 // 扫描并发现本地系统中的 SAP 配置文件
 function scanLocalSapFiles() {
   const home = os.homedir();
@@ -33,7 +81,8 @@ function scanLocalSapFiles() {
   for (const p of candidatePaths) {
     try {
       if (fs.existsSync(p) && fs.statSync(p).isFile()) {
-        const content = fs.readFileSync(p, 'utf-8');
+        const rawBuffer = fs.readFileSync(p);
+        const content = decodeSmartBuffer(rawBuffer);
         const ext = path.extname(p).toLowerCase();
         let type = 'unknown';
         if (ext === '.xml' || content.includes('<Landscape')) type = 'landscape_xml';
@@ -70,7 +119,8 @@ function scanLocalSapFiles() {
           if (file.toLowerCase().endsWith('.sap')) {
             const fullPath = path.join(folder, file);
             try {
-              const content = fs.readFileSync(fullPath, 'utf-8');
+              const rawBuffer = fs.readFileSync(fullPath);
+              const content = decodeSmartBuffer(rawBuffer);
               foundShortcuts.push({
                 path: fullPath,
                 filename: file,
@@ -96,11 +146,12 @@ function sapAutoScanPlugin() {
         if (req.method === 'GET') {
           try {
             const result = scanLocalSapFiles();
+            const jsonBody = JSON.stringify({ success: true, ...result });
             res.setHeader('Content-Type', 'application/json; charset=utf-8');
-            res.end(JSON.stringify({ success: true, ...result }));
+            res.end(Buffer.from(jsonBody, 'utf-8'));
           } catch (e: any) {
             res.statusCode = 500;
-            res.end(JSON.stringify({ success: false, error: e.message }));
+            res.end(Buffer.from(JSON.stringify({ success: false, error: e.message }), 'utf-8'));
           }
         } else {
           next();
@@ -134,10 +185,10 @@ function sapAutoScanPlugin() {
               }
 
               res.setHeader('Content-Type', 'application/json; charset=utf-8');
-              res.end(JSON.stringify({ success: true, destDir, savedFiles: savedList }));
+              res.end(Buffer.from(JSON.stringify({ success: true, destDir, savedFiles: savedList }), 'utf-8'));
             } catch (e: any) {
               res.statusCode = 500;
-              res.end(JSON.stringify({ success: false, error: e.message }));
+              res.end(Buffer.from(JSON.stringify({ success: false, error: e.message }), 'utf-8'));
             }
           });
         } else {

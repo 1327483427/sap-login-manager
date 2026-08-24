@@ -1,4 +1,5 @@
 import { SapSystem, EnvironmentType, SapAccount } from '../types/sap';
+import { sanitizeText } from './encodingHelper';
 
 /**
  * SAPUILandscape.xml / SAPGUILandscape.xml 与 saplogon.ini 高级导入解析器
@@ -14,7 +15,7 @@ function guessEnvironment(name: string, sid: string): EnvironmentType {
 }
 
 function extractSid(name: string, systemidAttr?: string | null): string {
-  if (systemidAttr && systemidAttr.trim()) return systemidAttr.trim().toUpperCase();
+  if (systemidAttr && systemidAttr.trim()) return sanitizeText(systemidAttr.trim().toUpperCase());
   
   // 常见命名模式，例如 SUNNY_S4D -> S4D, KRB-S4P-krb123 -> S4P, 天通S4D -> S4D, PS4 -> PS4, DS4 -> DS4
   const patterns = [
@@ -31,7 +32,6 @@ function extractSid(name: string, systemidAttr?: string | null): string {
     }
   }
 
-  // 取名称前3个有效字符
   const cleaned = name.replace(/[^a-zA-Z0-9]/g, '');
   return cleaned.slice(0, 3).toUpperCase() || 'SAP';
 }
@@ -40,8 +40,9 @@ function extractSid(name: string, systemidAttr?: string | null): string {
  * 解析 SAPUILandscape.xml / SAPGUILandscape.xml 文件内容
  */
 export function parseSapLandscapeXml(xmlContent: string): SapSystem[] {
+  const cleanedXml = sanitizeText(xmlContent);
   const parser = new DOMParser();
-  const doc = parser.parseFromString(xmlContent, 'text/xml');
+  const doc = parser.parseFromString(cleanedXml, 'text/xml');
   const systems: SapSystem[] = [];
 
   // 1. 获取 Router 字典
@@ -49,7 +50,7 @@ export function parseSapLandscapeXml(xmlContent: string): SapSystem[] {
   const routerElements = doc.querySelectorAll('Routers > Router');
   routerElements.forEach(el => {
     const uuid = el.getAttribute('uuid') || '';
-    const routerStr = el.getAttribute('router') || '';
+    const routerStr = sanitizeText(el.getAttribute('router') || '');
     if (uuid && routerStr) routersMap.set(uuid, routerStr);
   });
 
@@ -58,17 +59,17 @@ export function parseSapLandscapeXml(xmlContent: string): SapSystem[] {
   const msgElements = doc.querySelectorAll('Messageservers > Messageserver');
   msgElements.forEach(el => {
     const uuid = el.getAttribute('uuid') || '';
-    const host = el.getAttribute('host') || '';
-    const port = el.getAttribute('port') || '';
+    const host = sanitizeText(el.getAttribute('host') || '');
+    const port = sanitizeText(el.getAttribute('port') || '');
     if (uuid && host) msgServersMap.set(uuid, { host, port });
   });
 
   // 3. 获取 Workspaces / Nodes (工作区与分组节点，用于提取分类与标签)
-  // serviceId -> 节点名称列表（如 "诺贝尔", "KRB", "舜宇"）
   const serviceCategoriesMap = new Map<string, string[]>();
   const nodeElements = doc.querySelectorAll('Workspaces Node');
   nodeElements.forEach(node => {
-    const nodeName = node.getAttribute('name') || '';
+    const rawNodeName = node.getAttribute('name') || '';
+    const nodeName = sanitizeText(rawNodeName);
     if (nodeName) {
       const items = node.querySelectorAll('Item');
       items.forEach(item => {
@@ -88,12 +89,13 @@ export function parseSapLandscapeXml(xmlContent: string): SapSystem[] {
   const serviceElements = doc.querySelectorAll('Services > Service');
   serviceElements.forEach((el, index) => {
     const uuid = el.getAttribute('uuid') || `service-${index}`;
-    const name = el.getAttribute('name') || `SAP System ${index + 1}`;
+    const rawName = el.getAttribute('name') || `SAP System ${index + 1}`;
+    const name = sanitizeText(rawName);
     const systemIdAttr = el.getAttribute('systemid') || el.getAttribute('sid');
     const sid = extractSid(name, systemIdAttr);
 
-    let rawServer = el.getAttribute('server') || el.getAttribute('ip') || '';
-    let instanceNumber = el.getAttribute('systemnumber') || el.getAttribute('instancenumber') || '';
+    let rawServer = sanitizeText(el.getAttribute('server') || el.getAttribute('ip') || '');
+    let instanceNumber = sanitizeText(el.getAttribute('systemnumber') || el.getAttribute('instancenumber') || '');
     
     // 解析形如 "192.168.44.220:3200" 的服务器与端口
     let server = rawServer;
@@ -107,16 +109,16 @@ export function parseSapLandscapeXml(xmlContent: string): SapSystem[] {
     }
     if (!instanceNumber) instanceNumber = '00';
 
-    const client = el.getAttribute('client') || '800';
-    const language = el.getAttribute('language') || 'ZH';
-    const userAttr = el.getAttribute('user') || '';
+    const client = sanitizeText(el.getAttribute('client') || '800');
+    const language = sanitizeText(el.getAttribute('language') || 'ZH');
+    const userAttr = sanitizeText(el.getAttribute('user') || '');
     
     const routerUuid = el.getAttribute('routerid') || '';
     const routerStr = routerUuid ? (routersMap.get(routerUuid) || '') : '';
     
     const msUuid = el.getAttribute('messageserverid') || '';
     const msInfo = msUuid ? msgServersMap.get(msUuid) : undefined;
-    const group = el.getAttribute('group') || '';
+    const group = sanitizeText(el.getAttribute('group') || '');
 
     const env = guessEnvironment(name, sid);
 
@@ -176,7 +178,8 @@ export function parseSapLandscapeXml(xmlContent: string): SapSystem[] {
  * 解析经典 saplogon.ini 文件内容
  */
 export function parseSapLogonIni(iniContent: string): SapSystem[] {
-  const lines = iniContent.split(/\r?\n/);
+  const cleanedIni = sanitizeText(iniContent);
+  const lines = cleanedIni.split(/\r?\n/);
   const systems: SapSystem[] = [];
   const entries: Record<string, Record<string, string>> = {};
   let currentSection = '';
@@ -192,7 +195,7 @@ export function parseSapLogonIni(iniContent: string): SapSystem[] {
       const idx = trimmed.indexOf('=');
       const key = trimmed.slice(0, idx).trim();
       const val = trimmed.slice(idx + 1).trim();
-      entries[currentSection][key] = val;
+      entries[currentSection][key] = sanitizeText(val);
     }
   }
 
@@ -203,9 +206,9 @@ export function parseSapLogonIni(iniContent: string): SapSystem[] {
 
   const keys = Object.keys(descriptions);
   keys.forEach((key, idx) => {
-    const name = descriptions[key] || `SAP ${key}`;
-    const serverVal = servers[key] || '';
-    const routerVal = routers[key] || '';
+    const name = sanitizeText(descriptions[key] || `SAP ${key}`);
+    const serverVal = sanitizeText(servers[key] || '');
+    const routerVal = sanitizeText(routers[key] || '');
     const sid = extractSid(name, msSysNames[key]);
     
     let server = serverVal;

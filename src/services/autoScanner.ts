@@ -1,6 +1,7 @@
 import { SapSystem } from '../types/sap';
 import { parseSapLandscapeXml, parseSapLogonIni } from './landscapeParser';
 import { generateSapShortcutContent } from './sapShortcut';
+import { sanitizeText } from './encodingHelper';
 
 export interface ScanResult {
   success: boolean;
@@ -35,18 +36,19 @@ export interface ParsedSapShortcut {
  * 解析单个 .sap 快捷方式文件内容
  */
 export function parseIndividualSapShortcut(content: string, filename: string): ParsedSapShortcut {
-  const lines = content.split(/\r?\n/);
+  const clean = sanitizeText(content);
+  const lines = clean.split(/\r?\n/);
   const map: Record<string, string> = {};
   for (const line of lines) {
     const trimmed = line.trim();
     if (trimmed.includes('=')) {
       const idx = trimmed.indexOf('=');
-      map[trimmed.slice(0, idx).trim()] = trimmed.slice(idx + 1).trim();
+      map[trimmed.slice(0, idx).trim()] = sanitizeText(trimmed.slice(idx + 1).trim());
     }
   }
 
   return {
-    filename,
+    filename: sanitizeText(filename),
     sid: map['Name'] || map['System'] || filename.replace('.sap', ''),
     client: map['Client'] || '800',
     username: map['User'] || map['Name'] || '',
@@ -77,11 +79,12 @@ export async function scanLocalSapConfigs(): Promise<{
 
     const allSystems: SapSystem[] = [];
     for (const file of data.foundFiles) {
+      const cleanContent = sanitizeText(file.content);
       if (file.type === 'landscape_xml' || file.name.includes('Landscape')) {
-        const parsed = parseSapLandscapeXml(file.content);
+        const parsed = parseSapLandscapeXml(cleanContent);
         allSystems.push(...parsed);
       } else if (file.type === 'logon_ini' || file.name.endsWith('.ini')) {
-        const parsed = parseSapLogonIni(file.content);
+        const parsed = parseSapLogonIni(cleanContent);
         allSystems.push(...parsed);
       }
     }

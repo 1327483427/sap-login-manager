@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { SapSystem } from '../types/sap';
 import { parseSapLandscapeXml, parseSapLogonIni } from '../services/landscapeParser';
+import { decodeSmartBuffer, sanitizeText } from '../services/encodingHelper';
 
 interface LandscapeImportModalProps {
   isOpen: boolean;
@@ -30,16 +31,17 @@ export const LandscapeImportModal: React.FC<LandscapeImportModalProps> = ({
   const handleFileRead = (content: string, filename: string) => {
     setErrorMsg(null);
     try {
+      const cleanContent = sanitizeText(content);
       let systems: SapSystem[] = [];
-      if (filename.toLowerCase().endsWith('.xml') || content.trim().startsWith('<?xml') || content.includes('<Landscape')) {
-        systems = parseSapLandscapeXml(content);
-      } else if (filename.toLowerCase().endsWith('.ini') || content.includes('[Description]') || content.includes('[Server]')) {
-        systems = parseSapLogonIni(content);
+      if (filename.toLowerCase().endsWith('.xml') || cleanContent.trim().startsWith('<?xml') || cleanContent.includes('<Landscape')) {
+        systems = parseSapLandscapeXml(cleanContent);
+      } else if (filename.toLowerCase().endsWith('.ini') || cleanContent.includes('[Description]') || cleanContent.includes('[Server]')) {
+        systems = parseSapLogonIni(cleanContent);
       } else {
         try {
-          systems = parseSapLandscapeXml(content);
+          systems = parseSapLandscapeXml(cleanContent);
         } catch {
-          systems = parseSapLogonIni(content);
+          systems = parseSapLogonIni(cleanContent);
         }
       }
 
@@ -59,11 +61,15 @@ export const LandscapeImportModal: React.FC<LandscapeImportModalProps> = ({
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
+    // 使用 ArrayBuffer + 智能编码探测，彻底杜绝 GBK/ANSI 上传乱码
     reader.onload = (event) => {
-      const content = event.target?.result as string;
-      handleFileRead(content, file.name);
+      const arrayBuffer = event.target?.result as ArrayBuffer;
+      if (arrayBuffer) {
+        const decodedContent = decodeSmartBuffer(arrayBuffer);
+        handleFileRead(decodedContent, file.name);
+      }
     };
-    reader.readAsText(file);
+    reader.readAsArrayBuffer(file);
   };
 
   const handlePasteParse = () => {
@@ -108,7 +114,7 @@ export const LandscapeImportModal: React.FC<LandscapeImportModalProps> = ({
               <h2 className="font-bold text-sm text-slate-100">
                 导入 SAP 官方配置文件 (Landscape / INI)
               </h2>
-              <p className="text-xs text-slate-400">支持 SAPUILandscape.xml 与 saplogon.ini 自动提取连接</p>
+              <p className="text-xs text-slate-400">支持 UTF-8 / GBK 编码自动探测与无乱码解析</p>
             </div>
           </div>
           <button
@@ -147,7 +153,7 @@ export const LandscapeImportModal: React.FC<LandscapeImportModalProps> = ({
                 <div className="border-2 border-dashed border-slate-700/80 hover:border-blue-500/80 rounded-2xl p-8 text-center transition group bg-slate-900/40">
                   <input
                     type="file"
-                    accept=".xml,.ini,.txt"
+                    accept=".xml,.ini,.txt,.sap"
                     onChange={handleFileInput}
                     className="hidden"
                     id="landscape-file-input"
