@@ -15,7 +15,7 @@ import {
   saveSystemsToStorage, 
   exportBackupJson 
 } from './services/storage';
-import { downloadSapShortcut } from './services/sapShortcut';
+import { launchDirectSapshcut } from './services/sapShortcut';
 import { copyToClipboardWithTimeout } from './services/crypto';
 import { scanLocalSapConfigs } from './services/autoScanner';
 import { Server, Plus, Zap, Sparkles, X, RefreshCw } from 'lucide-react';
@@ -143,8 +143,8 @@ export const App: React.FC = () => {
     });
   }, [systems, activeCategory, selectedTag, searchQuery]);
 
-  // 快捷登录处理
-  const handleLaunch = (system: SapSystem, account?: SapAccount) => {
+  // 快捷直接登录处理（免下载，直接通过 sapshcut / CMD 拉起）
+  const handleLaunch = async (system: SapSystem, account?: SapAccount) => {
     const activeAcc = account || system.accounts.find(a => a.id === system.activeAccountId) || system.accounts[0];
 
     // 更新登录次数与时间
@@ -160,13 +160,13 @@ export const App: React.FC = () => {
     });
     updateSystemsState(updated);
 
-    // 触发下载/唤起 .sap 快捷方式
-    downloadSapShortcut(system, activeAcc);
+    // 直接通过本地 API 执行 sapshcut 唤起 SAP GUI 登录（免下载）
+    const res = await launchDirectSapshcut(system, activeAcc);
 
     addToast({
       type: 'launch',
-      title: `⚡ 快捷登录已触发: ${system.sid} (${system.name})`,
-      description: `账号: ${activeAcc?.username || '默认'} | 客户端: ${system.client} | 已生成 .sap 快捷方式`,
+      title: res.message || `⚡ 已通过 CMD/sapshcut 直接唤起 SAP GUI: ${system.sid}`,
+      description: `账号: ${activeAcc?.username || '默认'} | Client: ${system.client}`,
     });
   };
 
@@ -247,7 +247,6 @@ export const App: React.FC = () => {
 
   // 自动扫描导入覆盖或合并
   const handleAutoScanImport = (importedList: SapSystem[]) => {
-    // 智能合并，保留已有保存的密码
     const existingMap = new Map(systems.map(s => [`${s.sid}_${s.server}_${s.client}`, s]));
     
     for (const item of importedList) {
@@ -273,7 +272,6 @@ export const App: React.FC = () => {
     try {
       const res = await scanLocalSapConfigs();
       if (res.systems.length > 0) {
-        // 保留已有密码
         const existingPwMap = new Map<string, string>();
         for (const sys of systems) {
           for (const acc of sys.accounts) {
@@ -371,7 +369,7 @@ export const App: React.FC = () => {
                     className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 active:scale-95 text-white font-semibold rounded-xl text-xs flex items-center gap-1.5 shadow-md shadow-blue-500/20 transition"
                   >
                     <Zap className="w-3.5 h-3.5 fill-current" />
-                    <span>查看与管理快捷方式</span>
+                    <span>查看与管理命令</span>
                   </button>
                   <button
                     onClick={() => setShowAutoDetectBanner(false)}
@@ -541,6 +539,7 @@ export const App: React.FC = () => {
         isOpen={isShortcutModalOpen}
         onClose={() => setIsShortcutModalOpen(false)}
         system={shortcutSystem}
+        onShowToast={addToast}
       />
 
       {/* Toast 提示容器 */}

@@ -80,7 +80,7 @@ export const AutoScanModal: React.FC<AutoScanModalProps> = ({
     onClose();
   };
 
-  // 一键生成所有 .sap 文件到桌面
+  // 一键生成所有 .bat 批处理文件到桌面
   const handleExportToDesktop = async () => {
     const toExport = discoveredSystems.filter(s => selectedSystemIds.has(s.id));
     if (toExport.length === 0) return;
@@ -91,8 +91,8 @@ export const AutoScanModal: React.FC<AutoScanModalProps> = ({
       if (res.success) {
         onShowToast({
           type: 'launch',
-          title: `🚀 已在桌面生成 ${res.savedFiles?.length || toExport.length} 个 .sap 快捷方式`,
-          description: `保存路径: ${res.destDir || '桌面/SAP_Shortcuts'} (双击即可直接登录)`,
+          title: `🚀 已在桌面生成 ${res.savedFiles?.length || toExport.length} 个 .bat 批处理快捷方式`,
+          description: `保存路径: ${res.destDir || '桌面/SAP_Shortcuts'} (双击即可免密直连登录)`,
         });
       } else {
         onShowToast({
@@ -125,12 +125,12 @@ export const AutoScanModal: React.FC<AutoScanModalProps> = ({
             </div>
             <div>
               <h2 className="font-bold text-sm text-slate-100 flex items-center gap-2">
-                <span>本地 SAP Logon 配置与快捷方式自动读取</span>
+                <span>本地 SAP Logon 配置与批处理快捷方式自动读取</span>
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30">
                   一键读取生成
                 </span>
               </h2>
-              <p className="text-xs text-slate-400">自动检测本地 SAP GUI (macOS / Windows) 配置文件及已存快捷方式</p>
+              <p className="text-xs text-slate-400">自动检测本地 SAP GUI (macOS / Windows) 配置文件及 sapshcut 参数</p>
             </div>
           </div>
           <button
@@ -293,10 +293,10 @@ export const AutoScanModal: React.FC<AutoScanModalProps> = ({
                 onClick={handleExportToDesktop}
                 disabled={exportingToDesktop || selectedSystemIds.size === 0}
                 className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-200 hover:text-white rounded-xl text-xs font-medium border border-slate-700 transition flex items-center gap-1.5"
-                title="将选中的快捷方式直接生成并保存到桌面文件夹"
+                title="将选中的快捷方式直接生成 .bat 批处理文件并保存到桌面文件夹"
               >
                 <FolderDown className="w-3.5 h-3.5 text-purple-400" />
-                <span>{exportingToDesktop ? '正在生成...' : '自动导出快捷方式到桌面'}</span>
+                <span>{exportingToDesktop ? '正在生成...' : '自动导出 .bat 批处理到桌面'}</span>
               </button>
             )}
           </div>

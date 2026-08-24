@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { 
   Zap, 
-  Download, 
   Copy, 
   Check, 
   Eye, 
@@ -14,10 +13,11 @@ import {
   Server, 
   Network, 
   Share2,
-  Lock
+  Lock,
+  Terminal
 } from 'lucide-react';
 import { SapSystem, SapAccount, EnvironmentType } from '../types/sap';
-import { downloadSapShortcut } from '../services/sapShortcut';
+import { downloadSapBatFile } from '../services/sapShortcut';
 
 interface SystemCardProps {
   system: SapSystem;
@@ -156,7 +156,7 @@ export const SystemCard: React.FC<SystemCardProps> = ({
                       className="w-full px-3 py-2 text-left text-slate-300 hover:bg-slate-800 flex items-center gap-2"
                     >
                       <Share2 className="w-3.5 h-3.5 text-purple-400" />
-                      <span>快捷方式选项</span>
+                      <span>快捷命令选项</span>
                     </button>
                     <div className="h-px bg-slate-800 my-1" />
                     <button
@@ -269,23 +269,24 @@ export const SystemCard: React.FC<SystemCardProps> = ({
       {/* 卡片底部操作按钮 */}
       <div className="space-y-2 pt-2 border-t border-slate-800/80">
         <div className="flex items-center gap-2">
-          {/* 一键快捷登录 */}
+          {/* 一键直接呼起 CMD/sapshcut 登录（免下载） */}
           <button
             onClick={() => onLaunch(system, activeAccount)}
-            className="flex-1 py-2.5 px-3 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 active:scale-[0.98] text-white font-semibold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-md shadow-blue-500/20 transition"
+            className="flex-1 py-2.5 px-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 active:scale-[0.98] text-white font-semibold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-md shadow-blue-500/20 transition"
+            title="直接通过 sapshcut / CMD 唤起 SAP GUI 登录（免密直连）"
           >
             <Zap className="w-3.5 h-3.5 fill-current" />
-            <span>一键登录 SAP</span>
+            <span>一键直接登录</span>
           </button>
 
-          {/* 快捷方式 / .sap 导出 */}
+          {/* 备用：下载 .bat 批处理文件 */}
           <button
-            onClick={() => downloadSapShortcut(system, activeAccount)}
+            onClick={() => downloadSapBatFile(system, activeAccount)}
             className="py-2.5 px-3 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded-xl text-xs font-medium border border-slate-700 transition flex items-center gap-1"
-            title="下载 .sap 快捷方式文件"
+            title="下载 .bat 批处理快捷方式文件"
           >
-            <Download className="w-3.5 h-3.5 text-slate-400" />
-            <span className="hidden sm:inline">.sap</span>
+            <Terminal className="w-3.5 h-3.5 text-slate-400" />
+            <span>.bat</span>
           </button>
         </div>
 

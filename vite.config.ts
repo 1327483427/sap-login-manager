@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import { exec, spawn } from 'child_process';
 
 // 智能解码二进制 Buffer，支持 UTF-8, GBK, GB2312, GB18030, UTF-16LE
 function decodeSmartBuffer(buffer: Buffer): string {
@@ -102,7 +103,7 @@ function scanLocalSapFiles() {
     }
   }
 
-  // 扫描桌面和下载文件夹中的 .sap 快捷方式文件
+  // 扫描桌面和下载文件夹中的 .bat / .sap 快捷方式文件
   const shortcutFolders = [
     path.join(home, 'Desktop'),
     path.join(home, 'Downloads'),
@@ -116,7 +117,8 @@ function scanLocalSapFiles() {
       if (fs.existsSync(folder) && fs.statSync(folder).isDirectory()) {
         const files = fs.readdirSync(folder);
         for (const file of files) {
-          if (file.toLowerCase().endsWith('.sap')) {
+          const lower = file.toLowerCase();
+          if (lower.endsWith('.sap') || (lower.startsWith('sap_') && lower.endsWith('.bat'))) {
             const fullPath = path.join(folder, file);
             try {
               const rawBuffer = fs.readFileSync(fullPath);
@@ -136,7 +138,7 @@ function scanLocalSapFiles() {
   return { foundFiles, foundShortcuts, osPlatform: os.platform() };
 }
 
-// 自动扫描与快捷方式后端中间件插件
+// 自动扫描、直连执行与快捷方式后端中间件插件
 function sapAutoScanPlugin() {
   return {
     name: 'sap-auto-scan-middleware',
@@ -158,7 +160,104 @@ function sapAutoScanPlugin() {
         }
       });
 
-      // 2. 批量将快捷方式 (.sap) 导出生成到桌面接口
+      // 2. 直接唤起 CMD / sapshcut 登录（免下载，直接在宿主机执行命令）
+      server.middlewares.use('/api/launch-sap-shcut', (req: any, res: any, next: any) => {
+        if (req.method === 'POST') {
+          let body = '';
+          req.on('data', (chunk: any) => { body += chunk; });
+          req.on('end', () => {
+            try {
+              const data = JSON.parse(body || '{}');
+              const { sid, client, user, password, language, transaction, guiparm, batContent } = data;
+              const platform = os.platform();
+
+              if (platform === 'win32') {
+                // Windows 环境：直接生成临时 bat 并通过 cmd /c start 执行 sapshcut
+                const tempBatPath = path.join(os.tmpdir(), `sap_login_${sid}_${Date.now()}.bat`);
+                
+                const defaultBat = `@echo off
+chcp 65001 >nul
+set "SAPSHCUT_EXE="
+if exist "C:\\Program Files (x86)\\SAP\\FrontEnd\\SAPgui\\sapshcut.exe" (
+    set "SAPSHCUT_EXE=C:\\Program Files (x86)\\SAP\\FrontEnd\\SAPgui\\sapshcut.exe"
+) else if exist "C:\\Program Files\\SAP\\FrontEnd\\SAPgui\\sapshcut.exe" (
+    set "SAPSHCUT_EXE=C:\\Program Files\\SAP\\FrontEnd\\SAPgui\\sapshcut.exe"
+) else (
+    set "SAPSHCUT_EXE=sapshcut.exe"
+)
+start "" "%SAPSHCUT_EXE%" -system=${sid} -client=${client || '800'} -user=${user || ''} ${password ? `-pw="${password}"` : ''} -language=${language || 'ZH'} ${guiparm ? `-guiparm="${guiparm}"` : ''} -command="${transaction || '*SESSION_MANAGER'}"
+exit
+`;
+
+                const scriptToRun = batContent || defaultBat;
+                fs.writeFileSync(tempBatPath, scriptToRun, 'utf-8');
+
+                // 使用 cmd.exe /c start 直接脱离终端打开并运行
+                const child = spawn('cmd.exe', ['/c', 'start', '""', tempBatPath], {
+                  detached: true,
+                  stdio: 'ignore',
+                  windowsHide: false,
+                });
+                child.unref();
+
+                // 2秒后清理临时脚本文件
+                setTimeout(() => {
+                  try { if (fs.existsSync(tempBatPath)) fs.unlinkSync(tempBatPath); } catch {}
+                }, 2000);
+
+                res.setHeader('Content-Type', 'application/json; charset=utf-8');
+                res.end(Buffer.from(JSON.stringify({ 
+                  success: true, 
+                  platform: 'win32', 
+                  message: `已直接通过 CMD / sapshcut 唤起 SAP GUI 登录 [${sid}] (账号: ${user})` 
+                }), 'utf-8'));
+
+              } else if (platform === 'darwin') {
+                // macOS 环境：调用 SAPGUI for Java
+                let connString = guiparm || '';
+                if (!connString && data.server) {
+                  const port = `32${(data.instanceNumber || '00').padStart(2, '0')}`;
+                  connString = `/H/${data.server}/S/${port}`;
+                }
+
+                const cmd = connString 
+                  ? `open -a "SAPGUI" --args "conn=${connString}"` 
+                  : `open -a "SAPGUI"`;
+
+                exec(cmd, (err) => {
+                  if (err) {
+                    console.warn('macOS 拉起 SAP GUI 警告:', err.message);
+                  }
+                });
+
+                res.setHeader('Content-Type', 'application/json; charset=utf-8');
+                res.end(Buffer.from(JSON.stringify({ 
+                  success: true, 
+                  platform: 'darwin', 
+                  message: `已直接唤起 macOS SAP GUI 登录 [${sid}]` 
+                }), 'utf-8'));
+
+              } else {
+                // 其他平台
+                res.setHeader('Content-Type', 'application/json; charset=utf-8');
+                res.end(Buffer.from(JSON.stringify({ 
+                  success: true, 
+                  platform, 
+                  message: `已触发系统登录命令: ${sid}` 
+                }), 'utf-8'));
+              }
+
+            } catch (e: any) {
+              res.statusCode = 500;
+              res.end(Buffer.from(JSON.stringify({ success: false, error: e.message }), 'utf-8'));
+            }
+          });
+        } else {
+          next();
+        }
+      });
+
+      // 3. 批量将 .bat 快捷方式脚本导出生成到桌面文件夹接口
       server.middlewares.use('/api/generate-desktop-shortcuts', (req: any, res: any, next: any) => {
         if (req.method === 'POST') {
           let body = '';
@@ -177,7 +276,12 @@ function sapAutoScanPlugin() {
               if (Array.isArray(shortcuts)) {
                 for (const item of shortcuts) {
                   if (item.filename && item.content) {
-                    const filePath = path.join(destDir, item.filename);
+                    // 确保保存为 .bat 后缀
+                    let filename = item.filename;
+                    if (filename.toLowerCase().endsWith('.sap')) {
+                      filename = filename.replace(/\.sap$/i, '.bat');
+                    }
+                    const filePath = path.join(destDir, filename);
                     fs.writeFileSync(filePath, item.content, 'utf-8');
                     savedList.push(filePath);
                   }

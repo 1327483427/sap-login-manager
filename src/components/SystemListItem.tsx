@@ -1,17 +1,17 @@
 import React, { useState } from 'react';
 import { 
   Zap, 
-  Download, 
   Copy, 
   Check, 
   Star, 
   Edit3, 
   Trash2, 
   User,
-  Share2
+  Share2,
+  Terminal
 } from 'lucide-react';
 import { SapSystem, SapAccount, EnvironmentType } from '../types/sap';
-import { downloadSapShortcut } from '../services/sapShortcut';
+import { downloadSapBatFile } from '../services/sapShortcut';
 
 interface SystemListItemProps {
   system: SapSystem;
@@ -155,24 +155,25 @@ export const SystemListItem: React.FC<SystemListItemProps> = ({
         <div className="flex items-center justify-end gap-1.5">
           <button
             onClick={() => onLaunch(system, activeAccount)}
-            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-lg text-xs flex items-center gap-1 shadow-sm transition"
+            className="px-3 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-semibold rounded-lg text-xs flex items-center gap-1 shadow-sm transition active:scale-95"
+            title="直接通过 sapshcut 唤起 SAP 登录"
           >
             <Zap className="w-3 h-3 fill-current" />
-            <span>登录</span>
+            <span>直接登录</span>
           </button>
 
           <button
-            onClick={() => downloadSapShortcut(system, activeAccount)}
+            onClick={() => downloadSapBatFile(system, activeAccount)}
             className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 rounded-lg border border-slate-700 transition"
-            title="下载 .sap 快捷方式文件"
+            title="下载 .bat 批处理文件"
           >
-            <Download className="w-3.5 h-3.5" />
+            <Terminal className="w-3.5 h-3.5" />
           </button>
 
           <button
             onClick={() => onOpenShortcutModal(system)}
             className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 rounded-lg border border-slate-700 transition"
-            title="快捷方式详情与命令"
+            title="查看 .bat / sapshcut 脚本命令"
           >
             <Share2 className="w-3.5 h-3.5" />
           </button>

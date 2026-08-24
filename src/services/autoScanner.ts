@@ -1,6 +1,6 @@
 import { SapSystem } from '../types/sap';
 import { parseSapLandscapeXml, parseSapLogonIni } from './landscapeParser';
-import { generateSapShortcutContent } from './sapShortcut';
+import { generateSapBatContent } from './sapShortcut';
 import { sanitizeText } from './encodingHelper';
 
 export interface ScanResult {
@@ -33,7 +33,7 @@ export interface ParsedSapShortcut {
 }
 
 /**
- * 解析单个 .sap 快捷方式文件内容
+ * 解析单个 .sap / .bat 快捷方式文件内容
  */
 export function parseIndividualSapShortcut(content: string, filename: string): ParsedSapShortcut {
   const clean = sanitizeText(content);
@@ -49,11 +49,11 @@ export function parseIndividualSapShortcut(content: string, filename: string): P
 
   return {
     filename: sanitizeText(filename),
-    sid: map['Name'] || map['System'] || filename.replace('.sap', ''),
-    client: map['Client'] || '800',
-    username: map['User'] || map['Name'] || '',
-    language: map['Language'] || 'ZH',
-    command: map['Command'] || '*SESSION_MANAGER',
+    sid: map['Name'] || map['System'] || map['-system'] || filename.replace(/\.(sap|bat)$/i, ''),
+    client: map['Client'] || map['-client'] || '800',
+    username: map['User'] || map['Name'] || map['-user'] || '',
+    language: map['Language'] || map['-language'] || 'ZH',
+    command: map['Command'] || map['-command'] || '*SESSION_MANAGER',
     description: map['Title'] || map['Description'] || filename,
     server: map['Server'] || '',
   };
@@ -105,7 +105,7 @@ export async function scanLocalSapConfigs(): Promise<{
 }
 
 /**
- * 批量生成并保存所有系统的 .sap 快捷方式到桌面
+ * 批量生成并保存所有系统的 .bat 批处理快捷脚本到桌面
  */
 export async function batchExportShortcutsToDesktop(systems: SapSystem[]): Promise<{
   success: boolean;
@@ -116,8 +116,8 @@ export async function batchExportShortcutsToDesktop(systems: SapSystem[]): Promi
   try {
     const shortcutsPayload = systems.map(sys => {
       const activeAcc = sys.accounts.find(a => a.id === sys.activeAccountId) || sys.accounts[0];
-      const content = generateSapShortcutContent(sys, activeAcc);
-      const safeName = `${sys.sid}_${activeAcc?.username || 'user'}_${sys.client}.sap`.replace(/[\/\\:*?"<>|]/g, '_');
+      const content = generateSapBatContent(sys, activeAcc);
+      const safeName = `SAP_${sys.sid}_${activeAcc?.username || 'user'}_${sys.client}.bat`.replace(/[\/\\:*?"<>|]/g, '_');
       return {
         filename: safeName,
         content,
@@ -131,7 +131,7 @@ export async function batchExportShortcutsToDesktop(systems: SapSystem[]): Promi
     });
 
     if (!res.ok) {
-      throw new Error(`桌面快捷方式生成失败: ${res.statusText}`);
+      throw new Error(`桌面批处理脚本生成失败: ${res.statusText}`);
     }
 
     return await res.json();
