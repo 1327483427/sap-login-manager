@@ -7,6 +7,7 @@ import { QuickLauncher } from './components/QuickLauncher';
 import { ConnectionModal } from './components/ConnectionModal';
 import { LandscapeImportModal } from './components/LandscapeImportModal';
 import { ShortcutModal } from './components/ShortcutModal';
+import { AutoScanModal } from './components/AutoScanModal';
 import { ToastContainer, ToastMessage } from './components/Toast';
 import { SapSystem, SapAccount } from './types/sap';
 import { 
@@ -16,8 +17,9 @@ import {
 } from './services/storage';
 import { downloadSapShortcut } from './services/sapShortcut';
 import { copyToClipboardWithTimeout } from './services/crypto';
+import { scanLocalSapConfigs } from './services/autoScanner';
 import { DEFAULT_SAP_SYSTEMS } from './mock/defaultSystems';
-import { Server, Plus, UploadCloud } from 'lucide-react';
+import { Server, Plus, Zap, Sparkles, X } from 'lucide-react';
 
 export const App: React.FC = () => {
   const [systems, setSystems] = useState<SapSystem[]>(() => loadSystemsFromStorage());
@@ -33,6 +35,11 @@ export const App: React.FC = () => {
   const [isShortcutModalOpen, setIsShortcutModalOpen] = useState(false);
   const [shortcutSystem, setShortcutSystem] = useState<SapSystem | null>(null);
   const [isQuickLauncherOpen, setIsQuickLauncherOpen] = useState(false);
+  const [isAutoScanModalOpen, setIsAutoScanModalOpen] = useState(false);
+
+  // 本地自动检测到的系统统计信息
+  const [autoDetectedInfo, setAutoDetectedInfo] = useState<{ count: number; filePath: string } | null>(null);
+  const [showAutoDetectBanner, setShowAutoDetectBanner] = useState(true);
 
   // Toast 消息
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
@@ -54,6 +61,24 @@ export const App: React.FC = () => {
     setSystems(newSystems);
     saveSystemsToStorage(newSystems);
   };
+
+  // 首次启动时自动扫描本地 SAP 配置是否存在
+  useEffect(() => {
+    const checkLocalConfig = async () => {
+      try {
+        const res = await scanLocalSapConfigs();
+        if (res.systems.length > 0 && res.scannedFiles.length > 0) {
+          setAutoDetectedInfo({
+            count: res.systems.length,
+            filePath: res.scannedFiles[0].path,
+          });
+        }
+      } catch {
+        // ignore background detection error
+      }
+    };
+    checkLocalConfig();
+  }, []);
 
   // 全局快捷键监听 (Cmd+K / Ctrl+K)
   useEffect(() => {
@@ -205,6 +230,27 @@ export const App: React.FC = () => {
     });
   };
 
+  // 自动扫描导入覆盖或合并
+  const handleAutoScanImport = (importedList: SapSystem[]) => {
+    const existingMap = new Map(systems.map(s => [`${s.sid}_${s.server}_${s.client}`, s]));
+    
+    for (const item of importedList) {
+      const key = `${item.sid}_${item.server}_${item.client}`;
+      const existing = existingMap.get(key);
+      if (existing) {
+        const existingPw = existing.accounts[0]?.password;
+        if (existingPw && item.accounts[0]) {
+          item.accounts[0].password = existingPw;
+        }
+      }
+      existingMap.set(key, item);
+    }
+
+    const merged = Array.from(existingMap.values());
+    updateSystemsState(merged);
+    setShowAutoDetectBanner(false);
+  };
+
   // 恢复默认示例数据
   const handleResetData = () => {
     if (window.confirm('是否重置为默认的演示 SAP 系统连接列表？')) {
@@ -223,6 +269,7 @@ export const App: React.FC = () => {
         selectedTag={selectedTag}
         onSelectTag={setSelectedTag}
         onResetDefaultData={handleResetData}
+        onOpenAutoScan={() => setIsAutoScanModalOpen(true)}
       />
 
       {/* 主工作区 */}
@@ -237,11 +284,51 @@ export const App: React.FC = () => {
           onOpenImport={() => setIsImportModalOpen(true)}
           onExportBackup={() => { exportBackupJson(systems); addToast({ type: 'success', title: '已导出备份配置文件' }); }}
           onOpenQuickLauncher={() => setIsQuickLauncherOpen(true)}
+          onOpenAutoScan={() => setIsAutoScanModalOpen(true)}
         />
 
         {/* 主内容区域 */}
         <main className="flex-1 overflow-y-auto p-6">
           <div className="max-w-7xl mx-auto space-y-5">
+            {/* 本地自动检测到的 SAP 配置提示 Banner */}
+            {autoDetectedInfo && showAutoDetectBanner && (
+              <div className="p-4 rounded-2xl bg-gradient-to-r from-blue-900/40 via-indigo-900/30 to-purple-900/40 border border-blue-500/40 flex items-center justify-between gap-4 shadow-lg animate-fadeIn">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-10 h-10 rounded-xl bg-blue-600/20 text-blue-400 border border-blue-500/30 flex items-center justify-center shrink-0">
+                    <Sparkles className="w-5 h-5 animate-pulse text-blue-400" />
+                  </div>
+                  <div className="min-w-0 text-xs">
+                    <div className="font-bold text-slate-100 flex items-center gap-2">
+                      <span>已自动发现本地 SAP GUI 配置</span>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                        {autoDetectedInfo.count} 个系统连接
+                      </span>
+                    </div>
+                    <p className="text-slate-400 font-mono truncate mt-0.5" title={autoDetectedInfo.filePath}>
+                      配置文件: {autoDetectedInfo.filePath}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={() => setIsAutoScanModalOpen(true)}
+                    className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 active:scale-95 text-white font-semibold rounded-xl text-xs flex items-center gap-1.5 shadow-md shadow-blue-500/20 transition"
+                  >
+                    <Zap className="w-3.5 h-3.5 fill-current" />
+                    <span>立即读取并生成</span>
+                  </button>
+                  <button
+                    onClick={() => setShowAutoDetectBanner(false)}
+                    className="p-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-lg transition"
+                    title="忽略提示"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* 顶部分类指示标头 */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -284,23 +371,23 @@ export const App: React.FC = () => {
                 <div>
                   <h3 className="font-bold text-sm text-slate-200">没有匹配的 SAP 系统连接</h3>
                   <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
-                    您可以尝试修改搜索词，或者新建一个 SAP 系统连接配置，亦可导入 SAPUILandscape.xml。
+                    您可以点击「自动读取本地配置」从本机的 SAP GUI 自动生成系统，或点击「新建连接」。
                   </p>
                 </div>
                 <div className="flex items-center justify-center gap-3 pt-2">
                   <button
-                    onClick={() => { setEditingSystem(null); setIsConnectionModalOpen(true); }}
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-md shadow-blue-500/20"
+                    onClick={() => setIsAutoScanModalOpen(true)}
+                    className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-md shadow-blue-500/20"
                   >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>新建连接</span>
+                    <Zap className="w-3.5 h-3.5 fill-current" />
+                    <span>自动读取本地配置</span>
                   </button>
                   <button
-                    onClick={() => setIsImportModalOpen(true)}
+                    onClick={() => { setEditingSystem(null); setIsConnectionModalOpen(true); }}
                     className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-medium border border-slate-700"
                   >
-                    <UploadCloud className="w-3.5 h-3.5 text-blue-400 inline mr-1" />
-                    <span>导入 Landscape.xml</span>
+                    <Plus className="w-3.5 h-3.5 inline mr-1" />
+                    <span>新建连接</span>
                   </button>
                 </div>
               </div>
@@ -356,6 +443,14 @@ export const App: React.FC = () => {
           </div>
         </main>
       </div>
+
+      {/* 自动扫描与快捷方式生成模态框 */}
+      <AutoScanModal
+        isOpen={isAutoScanModalOpen}
+        onClose={() => setIsAutoScanModalOpen(false)}
+        onImportSystems={handleAutoScanImport}
+        onShowToast={addToast}
+      />
 
       {/* 极速启动弹窗 (Cmd+K) */}
       <QuickLauncher

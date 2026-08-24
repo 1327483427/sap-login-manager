@@ -5,7 +5,8 @@ import {
   Layers, 
   Tag, 
   RotateCcw,
-  Zap
+  Zap,
+  FolderSync
 } from 'lucide-react';
 import { SapSystem } from '../types/sap';
 
@@ -16,6 +17,7 @@ interface SidebarProps {
   selectedTag: string | null;
   onSelectTag: (tag: string | null) => void;
   onResetDefaultData: () => void;
+  onOpenAutoScan: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -25,6 +27,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   selectedTag,
   onSelectTag,
   onResetDefaultData,
+  onOpenAutoScan,
 }) => {
   // 统计各分类数量
   const countAll = systems.length;
@@ -54,7 +57,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
         {/* 分类菜单 */}
-        <div className="p-3 space-y-6 overflow-y-auto max-h-[calc(100vh-210px)]">
+        <div className="p-3 space-y-6 overflow-y-auto max-h-[calc(100vh-230px)]">
+          {/* 自动读取本地配置入口 */}
+          <div>
+            <button
+              onClick={onOpenAutoScan}
+              className="w-full flex items-center justify-between p-2.5 rounded-xl bg-gradient-to-r from-blue-600/15 via-indigo-600/15 to-purple-600/15 hover:from-blue-600/25 hover:to-purple-600/25 border border-blue-500/30 text-blue-400 hover:text-blue-300 transition text-xs font-semibold group shadow-sm"
+            >
+              <div className="flex items-center gap-2">
+                <FolderSync className="w-4 h-4 text-blue-400 group-hover:rotate-180 transition duration-500" />
+                <span>自动读取本地配置</span>
+              </div>
+              <span className="text-[10px] px-1.5 py-0.2 rounded bg-blue-500/20 text-blue-300 font-mono">
+                自动
+              </span>
+            </button>
+          </div>
+
           {/* 环境分类 */}
           <div className="space-y-1">
             <div className="px-3 py-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">

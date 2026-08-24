@@ -6,7 +6,8 @@ import {
   Download, 
   LayoutGrid, 
   List, 
-  Command
+  Command,
+  Zap
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -18,6 +19,7 @@ interface HeaderProps {
   onOpenImport: () => void;
   onExportBackup: () => void;
   onOpenQuickLauncher: () => void;
+  onOpenAutoScan: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -29,6 +31,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenImport,
   onExportBackup,
   onOpenQuickLauncher,
+  onOpenAutoScan,
 }) => {
   const isMac = typeof window !== 'undefined' && navigator.platform.toUpperCase().indexOf('MAC') >= 0;
 
@@ -56,7 +59,17 @@ export const Header: React.FC<HeaderProps> = ({
       </div>
 
       {/* 右侧动作操作区 */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2.5">
+        {/* 自动读取本地 SAP 配置与快捷方式 */}
+        <button
+          onClick={onOpenAutoScan}
+          className="flex items-center gap-1.5 px-3 py-2 bg-gradient-to-r from-blue-600/20 to-indigo-600/20 hover:from-blue-600/30 hover:to-indigo-600/30 text-blue-400 hover:text-blue-300 rounded-xl text-xs font-semibold border border-blue-500/40 transition shadow-sm active:scale-95"
+          title="自动扫描本地 SAP GUI 配置文件与快捷方式并生成连接"
+        >
+          <Zap className="w-3.5 h-3.5 fill-current text-blue-400 animate-pulse" />
+          <span className="hidden sm:inline">自动读取本地配置</span>
+        </button>
+
         {/* 视图切换 (卡片 / 列表) */}
         <div className="flex items-center bg-slate-900/90 p-1 rounded-xl border border-slate-800">
           <button
@@ -87,10 +100,10 @@ export const Header: React.FC<HeaderProps> = ({
         <button
           onClick={onOpenImport}
           className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700/80 text-slate-200 hover:text-white rounded-xl text-xs font-medium border border-slate-700/80 transition shadow-sm"
-          title="导入 SAPUILandscape.xml 或 saplogon.ini"
+          title="手动导入 SAPUILandscape.xml 或 saplogon.ini"
         >
           <UploadCloud className="w-4 h-4 text-blue-400" />
-          <span className="hidden sm:inline">导入配置</span>
+          <span className="hidden md:inline">导入</span>
         </button>
 
         {/* 备份导出 */}
@@ -100,7 +113,7 @@ export const Header: React.FC<HeaderProps> = ({
           title="导出当前配置与保管箱备份"
         >
           <Download className="w-4 h-4 text-emerald-400" />
-          <span className="hidden sm:inline">备份</span>
+          <span className="hidden md:inline">备份</span>
         </button>
 
         {/* 新建系统连接 */}
